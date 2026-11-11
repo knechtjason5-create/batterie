@@ -318,6 +318,49 @@
   .s-row .s-num { color: var(--muted); font-variant-numeric: tabular-nums; }
   .s-row .s-amt { font-weight: 650; font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
   .quick { display: grid; gap: 10px; margin-bottom: 14px; }
+
+  /* Accueil : salut, prochain cours, mois en cours, morceaux, rudiment du jour */
+  .hello { margin: 2px 2px 16px; }
+  .hello-big { font-size: 22px; font-weight: 750; letter-spacing: -.01em; }
+  .hello-sub { color: var(--muted); margin-top: 2px; }
+  .acc-grid { display: grid; gap: 14px; margin-bottom: 14px; }
+  @media (min-width: 900px) { .acc-grid.two { grid-template-columns: 1fr 1fr; } }
+  .tile { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 16px; }
+  .tile-label { font-size: 13px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .next { display: flex; align-items: center; gap: 14px; }
+  .next-when { flex: none; width: 64px; text-align: center; border-radius: 14px; background: var(--soft); padding: 8px 4px; }
+  .next-when b { display: block; font-size: 24px; line-height: 1.1; }
+  .next-when span { font-size: 12px; color: var(--muted); text-transform: uppercase; font-weight: 650; }
+  .next-body { flex: 1; min-width: 0; }
+  .next-name { font-size: 19px; font-weight: 750; margin: 2px 0 4px; }
+  .next-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; }
+  .count { display: inline-block; background: var(--ok-bg); color: var(--ok); font-weight: 700; font-size: 13px; padding: 3px 9px; border-radius: 99px; }
+  .next-go { flex: none; border: 0; border-radius: 12px; padding: 10px 12px; background: var(--soft); font-weight: 700; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .kpi { background: var(--soft); border-radius: 14px; padding: 10px; min-width: 0; }
+  .kpi b { display: block; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi span { font-size: 12.5px; color: var(--muted); }
+  .streak { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .streak b { color: var(--ink); }
+  .prog-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .prog-row:first-of-type { border-top: 0; }
+  .prog-name { font-weight: 700; width: 84px; flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .prog-body { flex: 1; min-width: 0; }
+  .prog-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+  .dots { display: inline-flex; gap: 3px; vertical-align: middle; margin-left: 4px; }
+  .dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  .dots i.on { background: var(--avance); }
+  .rud-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .rud-next { border: 0; background: var(--soft); border-radius: 10px; padding: 6px 10px; font-weight: 650; font-size: 13px; }
+  .rud-name { font-size: 18px; font-weight: 750; margin: 8px 0 10px; }
+  .sticking { display: flex; gap: 4px; }
+  .sticking span { flex: 0 1 30px; min-width: 16px; height: 34px; display: grid; place-items: center; border-radius: 9px; font-weight: 800; font-size: 15px; }
+  .sticking .R { background: var(--ok-bg); color: var(--ok); }
+  .sticking .L { background: var(--avance-bg); color: var(--avance); }
+  .sticking .g { flex-basis: 20px; height: 24px; font-size: 11px; align-self: end; opacity: .85; }
+  .sticking .acc { box-shadow: inset 0 -3px 0 var(--retard); }
+  .sticking .sp { flex: 0 0 8px; min-width: 0; background: none; }
+  .rud-tip { color: var(--muted); font-size: 14px; margin-top: 10px; }
   .quick-card { background: var(--accent); color: var(--accent-ink); border-radius: 18px; padding: 14px 16px; box-shadow: var(--shadow); }
   .quick-top { font-size: 13px; opacity: .75; font-weight: 600; }
   .quick-title { font-size: 18px; font-weight: 750; margin: 2px 0 8px; }
@@ -372,9 +415,13 @@
   </header>
   <main>
     <section class="view" id="v-accueil">
+      <div id="hello" class="hello"></div>
       <div id="quick" class="quick"></div>
+      <div id="next"></div>
       <div id="week"></div>
       <div id="accueilVide" class="empty" hidden>Aucun cours prévu cette semaine.</div>
+      <div class="acc-grid two"><div id="month"></div><div id="progress"></div></div>
+      <div id="rudiment"></div>
     </section>
     <section class="view" id="v-eleves">
       <div id="dash" class="grid"><div class="skeleton"></div><div class="skeleton"></div></div>
@@ -636,6 +683,7 @@
     $('addStudent').hidden = false;
     renderQuick();
     renderWeek();
+    renderAccueil();
     const main = data.students.filter(s => s.main);
     const autres = data.students.filter(s => !s.main);
 
@@ -703,6 +751,136 @@
     $('week').innerHTML = `<div class="week"><div class="week-head">Cette semaine <span>${f(monday)} – ${f(fin)} · ${faits}/${items.length} notés</span></div>${rows}${pied}</div>`;
   }
 
+  /* ---------- Accueil : petits plus ---------- */
+
+  const RUDIMENTS = [
+    { n: 'Single stroke roll', s: 'RLRL RLRL', t: 'Main droite, main gauche : même hauteur, même son. Monte le tempo de 5 en 5.' },
+    { n: 'Double stroke roll', s: 'RRLL RRLL', t: 'Le 2e coup rebondit : laisse la baguette travailler, ne la force pas.' },
+    { n: 'Paradiddle', s: '>RLRR >LRLL', t: 'Accentue le 1er temps. Sur la charleston puis déplace la main droite sur le ride.' },
+    { n: 'Double paradiddle', s: '>RLRLRR >LRLRLL', t: 'Parfait pour sentir le ternaire : 6 notes par groupe.' },
+    { n: 'Paradiddle-diddle', s: '>RLRRLL', t: 'Idéal pour les fills rapides entre caisse claire et toms.' },
+    { n: 'Inverted paradiddle', s: 'RLLR LRRL', t: 'Le double tombe au milieu : base de nombreux grooves linéaires.' },
+    { n: 'Triple stroke roll', s: 'RRR LLL', t: 'Trois coups égaux par main : commence très lentement.' },
+    { n: 'Flam', s: 'lR rL', t: 'La note fantôme part de 2 cm, la principale de 20 cm : un seul « flam », pas deux coups.' },
+    { n: 'Flam tap', s: 'lRR rLL', t: 'La 2e note de chaque main prépare le flam suivant.' },
+    { n: 'Drag', s: 'llR rrL', t: 'Deux petites notes rebondies avant la note principale.' },
+    { n: 'Five stroke roll', s: 'RRLL>R', t: 'Deux doubles et un accent : roulement court très utilisé.' },
+    { n: 'Six stroke roll', s: '>RLLRR>L', t: 'Accents aux extrémités, doubles au centre : sonne énorme sur les toms.' },
+    { n: 'Single ratamacue', s: 'llRLR>L', t: 'Un drag puis trois simples, accent sur la dernière.' },
+    { n: 'Swiss army triplet', s: 'rRRL', t: 'Un flam suivi de deux notes : très fluide en triolets.' },
+    { n: 'Single stroke four', s: 'RLR>L', t: 'Quatre notes en triolet, accent sur la dernière.' },
+    { n: 'Single stroke seven', s: 'RLRLRL>R', t: 'Sept coups simples qui finissent sur un accent.' }
+  ];
+  let rudDecal = 0;
+  const jourIndex = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 6e4) / 864e5);
+
+  function stickingHtml(txt) {
+    return txt.split(' ').map((grp, gi) => (gi ? '<span class="sp"></span>' : '') + grp.replace(/(>?)([rlRL])/g, (m, acc, c) => {
+      const grace = c === c.toLowerCase();
+      return `<span class="${c.toUpperCase()}${grace ? ' g' : ''}${acc ? ' acc' : ''}">${c.toUpperCase()}</span>`;
+    })).join('');
+  }
+
+  function renderRudiment() {
+    const r = RUDIMENTS[((jourIndex() + rudDecal) % RUDIMENTS.length + RUDIMENTS.length) % RUDIMENTS.length];
+    $('rudiment').innerHTML = `<div class="tile">
+      <div class="rud-head"><span class="tile-label">🥁 Rudiment du jour</span>
+        <button type="button" class="rud-next" data-rud="1">Un autre ↻</button></div>
+      <div class="rud-name">${esc(r.n)}</div>
+      <div class="sticking">${stickingHtml(r.s)}</div>
+      <div class="rud-tip">${esc(r.t)}</div></div>`;
+  }
+
+  function quandRelatif(d) {
+    const now = new Date();
+    const j = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 864e5);
+    if (j === 0) {
+      const min = Math.round((d - now) / 6e4);
+      return min <= 0 ? 'maintenant' : min < 60 ? `dans ${min} min` : `dans ${Math.floor(min / 60)} h ${p2(min % 60)}`;
+    }
+    return j === 1 ? 'demain' : `dans ${j} jours`;
+  }
+
+  // Tous les cours connus (historiques récents des élèves), avec leur date.
+  function tousLesCours() {
+    const out = [];
+    DATA.students.forEach(s => (s.history || []).forEach(h => {
+      const d = h.datetime ? parseIso(h.datetime) : h.week ? parseIso(h.week) : null;
+      if (d) out.push({ s, h, d });
+    }));
+    return out;
+  }
+
+  function renderAccueil() {
+    const now = new Date();
+    const hr = now.getHours();
+    const salut = hr < 5 ? 'Bonne nuit' : hr < 12 ? 'Bonjour' : hr < 18 ? 'Bon après-midi' : 'Bonsoir';
+
+    // Prochains cours (agenda ou horaire habituel) de tous les élèves suivis.
+    const prochains = DATA.students.map(s => ({ s, sl: nextLesson(s) }))
+      .filter(x => x.sl && (x.s.main || x.sl.src === 'agenda'))
+      .sort((a, b) => a.sl.date - b.sl.date);
+    const duJour = coursDuJour();
+    const aujourdHui = prochains.filter(x => isoDate(x.sl.date) === isoDate(now));
+    let sous;
+    if (duJour.length) sous = duJour.length === 1 ? `Cours de ${duJour[0].s.name} à noter aujourd'hui.` : `${duJour.length} cours à noter aujourd'hui.`;
+    else if (aujourdHui.length) sous = `Aujourd'hui : ${aujourdHui.map(x => x.s.name + ' à ' + hhmm(x.sl.date)).join(', ')}.`;
+    else if (prochains.length) sous = `Pas de cours aujourd'hui. Prochain : ${prochains[0].s.name}, ${quandRelatif(prochains[0].sl.date)}.`;
+    else sous = 'Aucun cours prévu pour le moment.';
+    $('hello').innerHTML = `<div class="hello-big">${salut} Jason 👋</div><div class="hello-sub">${esc(sous)}</div>`;
+
+    // Carte « prochain cours » (sauf si c'est déjà la carte du jour).
+    const nx = prochains.find(x => !duJour.some(q => q.s.name === x.s.name));
+    if (nx) {
+      const d = nx.sl.date;
+      const morceau = nx.s.lastSong ? chip(nx.s.lastSong) : '';
+      $('next').innerHTML = `<div class="tile next" style="margin-bottom:14px">
+        <div class="next-when"><span>${d.toLocaleDateString('fr-FR', { weekday: 'short' })}</span><b>${d.getDate()}</b><span>${hhmm(d)}</span></div>
+        <div class="next-body"><div class="tile-label">Prochain cours</div>
+          <div class="next-name">${esc(nx.s.name)}</div>
+          <div class="next-meta"><span class="count">${quandRelatif(d)}</span>${nx.sl.src === 'agenda' ? '<span>📅 agenda</span>' : '<span>horaire habituel</span>'}${morceau}</div></div>
+        <button type="button" class="next-go" data-wk="${esc(nx.s.name)}" data-when="${isoLocal(d)}" aria-label="Préparer le cours de ${esc(nx.s.name)}">＋</button>
+      </div>`;
+    } else $('next').innerHTML = '';
+
+    // Ce mois-ci + série de semaines avec au moins un cours.
+    const ym = isoDate(now).slice(0, 7);
+    const cours = tousLesCours();
+    const duMois = cours.filter(c => isoDate(c.d).slice(0, 7) === ym);
+    const encaisse = duMois.reduce((t, c) => t + c.h.amount, 0);
+    const heures = duMois.reduce((t, c) => t + durOf(c.h) / 60, 0);
+    const semaines = new Set(cours.map(c => isoDate(mondayOf(c.d))));
+    let serie = 0;
+    let lundi = mondayOf(now);
+    if (!semaines.has(isoDate(lundi))) lundi = addDays(lundi, -7); // la semaine en cours n'est peut-être pas finie
+    while (semaines.has(isoDate(lundi))) { serie++; lundi = addDays(lundi, -7); }
+    const nomMois = now.toLocaleDateString('fr-FR', { month: 'long' });
+    $('month').innerHTML = `<div class="tile"><div class="tile-label">${esc(cap(nomMois))} en un coup d'œil</div>
+      <div class="kpis">
+        <div class="kpi"><b>${euros(encaisse).replace(',00', '')}</b><span>encaissés</span></div>
+        <div class="kpi"><b>${duMois.length}</b><span>cours</span></div>
+        <div class="kpi"><b>${String(Math.round(heures * 10) / 10).replace('.', ',')} h</b><span>enseignées</span></div>
+      </div>
+      ${serie >= 2 ? `<div class="streak">🔥 <b>${serie} semaines</b> d'affilée avec au moins un cours</div>` : ''}</div>`;
+
+    // Morceau en cours de chaque élève suivi.
+    const suivis = DATA.students.filter(s => s.main && s.lastSong);
+    $('progress').innerHTML = suivis.length ? `<div class="tile"><div class="tile-label">🎵 Au programme</div>
+      ${suivis.map(s => {
+        const st = (s.songStats || []).find(x => x.name === s.lastSong);
+        const n = st ? st.count : 1;
+        const sem = st && st.first ? Math.max(1, Math.round((now - parseIso(st.first)) / (7 * 864e5))) : 0;
+        const dots = Array.from({ length: Math.min(8, Math.max(n, 4)) }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('');
+        return `<div class="prog-row"><div class="prog-name">${esc(s.name)}</div><div class="prog-body">${chip(s.lastSong)}
+          <div class="prog-sub">${n} séance${n > 1 ? 's' : ''}${sem ? ` · depuis ${sem} sem.` : ''}<span class="dots">${dots}</span></div></div></div>`;
+      }).join('')}</div>` : '';
+
+    renderRudiment();
+  }
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-rud]')) { rudDecal++; renderRudiment(); }
+  });
+
   function sinceLine(s) {
     const parts = [];
     let stale = false;
@@ -762,7 +940,7 @@
     if (e.target.id === 'retry') { $('dash').innerHTML = '<div class="skeleton"></div>'; load(); return; }
     const t = e.target.closest('[data-toggle],[data-add],[data-recaler],[data-edit],[data-quick],[data-wk],[data-recap],[data-settings]');
     if (!t || t.closest('#sheet,#panel')) return;
-    if (t.dataset.toggle) t.closest('.card').classList.toggle('open');
+    if (t.dataset.toggle) { const c = t.closest('.card'); if (c) c.classList.toggle('open'); }
     if (t.dataset.add) openSheet(t.dataset.add);
     if (t.dataset.edit) openEdit(t.dataset.edit, Number(t.dataset.row));
     if (t.dataset.quick) quickSave(t.dataset.quick, t);
