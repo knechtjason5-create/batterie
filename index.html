@@ -264,6 +264,10 @@
   input::-webkit-date-and-time-value { text-align: left; }
   /* Jamais de défilement gauche-droite : ni la page, ni les fenêtres du bas. */
   html, body { overflow-x: hidden; }
+  /* Toujours au moins la hauteur de l'écran : sinon, en app plein écran sur iPhone, une page courte
+     (Accueil, Élèves) laissait la barre du bas remonter avec une bande grise dessous. */
+  html { background: var(--bg); min-height: 100%; }
+  body { min-height: 100vh; min-height: 100lvh; }
   .sheet, .panel { overflow-x: hidden; overscroll-behavior: contain; touch-action: pan-y; }
   .sheet > *, .panel > * { max-width: 100%; }
   body.modal-open { overflow: hidden; }
