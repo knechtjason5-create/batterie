@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
+<base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Batterie</title>
@@ -13,39 +14,1412 @@
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icone-192.png">
 <link rel="manifest" href="./manifest.webmanifest">
-<script>
-  // Ouvert depuis l'écran d'accueil : on va directement à l'interface.
-  var SITE = 'https://sites.google.com/view/coursdebatterie';
-  var app = (window.navigator.standalone === true) ||
-    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-  if (app) location.replace(SITE);
-</script>
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #212121; color: #f2f2f2;
-    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 24px 16px; }
-  main { max-width: 380px; text-align: center; }
-  img { width: 128px; height: 128px; border-radius: 28px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
-  h1 { font-size: 26px; margin: 20px 0 6px; }
-  p { color: #b4b4ba; margin: 0 0 22px; }
-  ol { text-align: left; background: #2c2c2e; border-radius: 16px; padding: 16px 16px 16px 36px; margin: 0 0 22px; }
-  li { margin: 6px 0; }
-  a.btn { display: block; background: #f2f2f2; color: #212121; text-decoration: none; font-weight: 700;
-    border-radius: 14px; padding: 15px; }
+  /* App plein écran : laisser la place à la barre d'état de l'iPhone. */
+  body { padding-top: env(safe-area-inset-top); }
+  .code-bg { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 24px 16px;
+    background: var(--bg); }
+  .code-box { width: 100%; max-width: 360px; text-align: center; }
+  .code-box img { width: 96px; height: 96px; border-radius: 22px; }
+  .code-box h2 { margin: 16px 0 6px; font-size: 22px; }
+  .code-box p { color: var(--muted); margin: 0 0 18px; font-size: 15px; }
+  .code-box input { width: 100%; font: inherit; font-size: 16px; padding: 14px; border-radius: 14px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); text-align: center; }
+  .code-box button { width: 100%; margin-top: 12px; border: 0; border-radius: 14px; padding: 15px;
+    background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 16px; }
+  .code-err { color: var(--retard); min-height: 1.4em; margin-top: 10px; font-size: 14px; }
 </style>
+<script>
+  // Remplace google.script.run : chaque appel part vers l'API du script avec le code d'accès.
+  (function () {
+    var API = 'https://script.google.com/macros/s/AKfycbx3oyk5GEkz38b-LgaZdUH7OBWXNAu88vD0ZCb7G6tuOiElRPnnQD-RxlOZ2tYUwRX8/exec';
+    var CLE = 'cours-batterie:jeton';
+    function lire() {
+      var m = location.hash.match(/k=([A-Za-z0-9]+)/);
+      if (m) { try { localStorage.setItem(CLE, m[1]); } catch (e) {} return m[1]; }
+      try { return localStorage.getItem(CLE); } catch (e) { return null; }
+    }
+    window.APP_JETON = lire();
+    window.appDemanderCode = function (msg) {
+      if (document.getElementById('codeBg')) return;
+      var bg = document.createElement('div');
+      bg.className = 'code-bg'; bg.id = 'codeBg';
+      bg.innerHTML = '<form class="code-box"><img src="./icone-192.png" alt=""><h2>Cours de batterie</h2>' +
+        '<p>Colle le code d\'accès (une seule fois sur cet appareil).</p>' +
+        '<input id="codeIn" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Code d\'accès">' +
+        '<button type="submit">Valider</button><div class="code-err">' + (msg || '') + '</div></form>';
+      document.body.appendChild(bg);
+      bg.querySelector('form').onsubmit = function (e) {
+        e.preventDefault();
+        var v = document.getElementById('codeIn').value.trim();
+        if (!v) return;
+        try { localStorage.setItem(CLE, v); } catch (err) {}
+        location.replace(location.pathname + '#k=' + v);
+        location.reload();
+      };
+    };
+    function runner(ok, ko) {
+      return new Proxy({}, { get: function (_, nom) {
+        if (nom === 'withSuccessHandler') return function (f) { return runner(f, ko); };
+        if (nom === 'withFailureHandler') return function (f) { return runner(ok, f); };
+        return function () {
+          var args = Array.prototype.slice.call(arguments);
+          if (!window.APP_JETON) { window.appDemanderCode(); if (ko) ko(new Error('Code d\'accès manquant')); return; }
+          fetch(API, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ k: window.APP_JETON, fn: nom, args: args }) })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (res.ok) { if (ok) ok(res.result); return; }
+              if (res.code === 'auth') {
+                try { localStorage.removeItem(CLE); } catch (e) {}
+                window.APP_JETON = null;
+                window.appDemanderCode('Code incorrect');
+              }
+              if (ko) ko(new Error(res.error));
+            })
+            .catch(function () { if (ko) ko(new Error('connexion impossible')); });
+        };
+      } });
+    }
+    window.google = { script: { run: runner(null, null) } };
+    if (!window.APP_JETON) document.addEventListener('DOMContentLoaded', function () { window.appDemanderCode(); });
+  })();
+</script>
+
+<style>
+  :root {
+    --bg: #f5f4f0; --card: #ffffff; --ink: #1c1c1e; --muted: #6e6e73; --line: #e5e3dc;
+    --soft: #efeee9; --accent: #1c1c1e; --accent-ink: #ffffff;
+    --ok: #2160d6; --ok-bg: #e6eeff; --avance: #17803a; --avance-bg: #ddf4e4;
+    --retard: #c42b2b; --retard-bg: #fde5e5; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #212121; --card: #2c2c2e; --ink: #f2f2f2; --muted: #a0a0a6; --line: #3a3a3d;
+      --soft: #363639; --accent: #f2f2f2; --accent-ink: #212121;
+      --ok: #7aa7ff; --ok-bg: #1d2a45; --avance: #5ad07e; --avance-bg: #183323;
+      --retard: #ff7b7b; --retard-bg: #3d1c1c; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #212121; --card: #2c2c2e; --ink: #f2f2f2; --muted: #a0a0a6; --line: #3a3a3d;
+    --soft: #363639; --accent: #f2f2f2; --accent-ink: #212121;
+    --ok: #7aa7ff; --ok-bg: #1d2a45; --avance: #5ad07e; --avance-bg: #183323;
+    --retard: #ff7b7b; --retard-bg: #3d1c1c; --shadow: none;
+  }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-taille="grand"] body { zoom: 1.12; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 0 16px; }
+
+  header { padding: 22px 0 14px; }
+  .today { color: var(--muted); font-size: 14px; }
+  .today::first-letter, .h-when::first-letter, .month-label::first-letter { text-transform: uppercase; }
+  .sync { color: var(--muted); font-size: 13px; }
+  h1 { font-size: 26px; margin: 2px 0 10px; letter-spacing: -.02em; }
+  .summary { border: 0; cursor: pointer; font: inherit; color: inherit; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px;
+    background: var(--card); box-shadow: var(--shadow); font-weight: 600; font-size: 15px; }
+  .summary .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  .view { display: none; }
+  .view.on { display: block; }
+  .empty { color: var(--muted); text-align: center; padding: 28px 12px; }
+
+  /* Barre de navigation : en bas sur téléphone, à gauche sur ordinateur. */
+  .nav { position: fixed; z-index: 4; left: 0; right: 0; bottom: 0; display: flex; align-items: stretch; gap: 2px;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--card);
+    border-top: 1px solid var(--line); box-shadow: 0 -4px 18px rgba(0,0,0,.06); }
+  .nav-brand, .nav .long { display: none; }
+  .nav-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    border: 0; background: none; border-radius: 14px; padding: 6px 2px; color: var(--muted); font: 600 11.5px/1.2 inherit;
+    font-family: inherit; text-decoration: none; cursor: pointer; }
+  .nav-item svg { width: 24px; height: 24px; flex: none; }
+  .nav-item.active { color: var(--ink); background: var(--soft); }
+  .nav-item.add .ico { display: grid; place-items: center; background: var(--accent); color: var(--accent-ink); border-radius: 12px; padding: 3px 12px; }
+  .nav-item.add { color: var(--ink); }
+  .nav-item:disabled { opacity: .45; }
+  @media (min-width: 900px) {
+    body { padding-left: 232px; }
+    .nav { top: 0; right: auto; width: 232px; flex-direction: column; gap: 4px; padding: 22px 14px;
+      border-top: 0; border-right: 1px solid var(--line); box-shadow: none; }
+    .nav-brand { order: -2; display: block; font-weight: 750; font-size: 18px; letter-spacing: -.01em; padding: 0 10px 20px; }
+    .nav .long { display: inline; }
+    .nav .short { display: none; }
+    .nav-item { flex: none; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 11px 12px; font-size: 15px; }
+    .nav-item svg { width: 20px; height: 20px; }
+    .nav-item.add { order: -1; background: var(--accent); color: var(--accent-ink); justify-content: center; margin-bottom: 14px; padding: 13px 12px; }
+    .nav-item.add .ico { background: none; color: inherit; padding: 0; }
+    .nav-item.ext { margin-top: auto; }
+    main { padding-bottom: 40px; }
+    header h1 { font-size: 28px; }
+  }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); overflow: hidden; }
+  .card-head { display: flex; align-items: center; gap: 12px; padding: 16px; width: 100%;
+    background: none; border: 0; text-align: left; }
+  .avatar { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; flex: none;
+    font-weight: 700; font-size: 18px; }
+  .avatar.ok { background: var(--ok-bg); color: var(--ok); }
+  .avatar.avance { background: var(--avance-bg); color: var(--avance); }
+  .avatar.retard { background: var(--retard-bg); color: var(--retard); }
+  .who { flex: 1; min-width: 0; }
+  .name { font-weight: 650; font-size: 18px; }
+  .usual { color: var(--muted); font-size: 13px; }
+  .since { color: var(--muted); font-size: 12.5px; margin-top: 1px; }
+  .since.stale { color: var(--retard); font-weight: 600; }
+  .money { text-align: right; }
+  .balance { font-weight: 750; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 650; }
+  .pill.ok { color: var(--ok); background: var(--ok-bg); }
+  .pill.avance { color: var(--avance); background: var(--avance-bg); }
+  .pill.retard { color: var(--retard); background: var(--retard-bg); }
+  .card-actions { display: flex; gap: 8px; padding: 0 16px 14px; }
+  .btn-soft { flex: 1; border: 0; border-radius: 12px; padding: 10px; background: var(--soft); font-weight: 600; font-size: 15px; }
+  .btn-soft.primary { background: var(--accent); color: var(--accent-ink); }
+  .history { display: none; border-top: 1px solid var(--line); padding: 6px 16px 14px; }
+  .card.open .history { display: block; }
+  .h-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .h-row:last-of-type { border-bottom: 0; }
+  .h-row.pending { opacity: .55; }
+  .h-when { display: inline-block; color: var(--muted); width: 122px; flex: none; }
+  .h-song { flex: 1; min-width: 0; }
+  .h-dur { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .h-amount { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .h-meta { color: var(--muted); font-size: 13px; padding-top: 8px; display: flex; justify-content: space-between; gap: 8px; }
+  .link { background: none; border: 0; padding: 0; color: var(--muted); text-decoration: underline; font-size: 13px; }
+  .chip { display: inline-block; max-width: 100%; padding: 3px 9px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+  .progress { padding-top: 12px; }
+  .progress .label { margin-bottom: 4px; }
+  .p-row { display: flex; align-items: center; gap: 10px; padding: 4px 0; font-size: 13px; color: var(--muted); }
+  .p-row .chip { flex: 0 1 auto; min-width: 0; }
+  .p-row span:last-child { flex: none; }
+  .card-more { display: flex; gap: 8px; padding-top: 12px; }
+  .card-more .btn-soft { font-size: 14px; padding: 9px; }
+  .others { margin-top: 22px; }
+  .others summary { cursor: pointer; color: var(--muted); font-weight: 600; margin-bottom: 12px; list-style: none; }
+  .others summary::before { content: '▸ '; }
+  .others[open] summary::before { content: '▾ '; }
+  .add-student { display: block; margin: 20px auto 0; background: none; border: 2px dashed var(--line); border-radius: 14px;
+    padding: 12px 18px; color: var(--muted); font-weight: 650; }
+  .skeleton { height: 128px; border-radius: 18px; background: linear-gradient(90deg, var(--card), var(--soft), var(--card));
+    background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+
+  .week { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 12px 8px 6px; margin-bottom: 14px; }
+  .week-head { display: flex; justify-content: space-between; align-items: baseline; padding: 0 8px 4px; font-weight: 700; font-size: 15px; }
+  .week-head span { color: var(--muted); font-weight: 600; font-size: 13px; }
+  .w-row { display: flex; align-items: center; gap: 10px; width: 100%; background: none; border: 0; border-radius: 12px;
+    padding: 9px 8px; text-align: left; }
+  .w-row:active { background: var(--soft); }
+  .w-day { width: 88px; flex: none; color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+  .w-row.auj .w-day { color: var(--ink); font-weight: 700; }
+  .w-name { flex: 1; min-width: 0; font-weight: 650; }
+  .w-state { font-size: 13px; font-weight: 650; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+  .w-row.fait .w-state { color: var(--avance); background: var(--avance-bg); }
+  .w-row.a-noter .w-state { color: var(--retard); background: var(--retard-bg); }
+  .w-row.a-venir .w-state { color: var(--muted); background: var(--soft); }
+  .w-src { font-size: 12px; margin-left: 4px; opacity: .8; }
+  .w-row.habituel .w-day { font-style: italic; }
+  .week-foot { color: var(--muted); font-size: 12px; padding: 4px 8px 6px; }
+  .agenda-picks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .agenda-picks .label { width: 100%; margin: 0; font-size: 12px; }
+
+  .sheet-bg { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.4); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .sheet-bg.open { opacity: 1; pointer-events: auto; }
+  .sheet { position: fixed; z-index: 11; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow-y: auto; background: var(--card);
+    border-radius: 22px 22px 0 0; padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+    transform: translateY(100%); transition: transform .25s ease; max-width: 560px; margin: 0 auto; }
+  .sheet.open { transform: none; }
+  @media (min-width: 700px) {
+    .sheet { bottom: auto; top: 50%; border-radius: 22px; transform: translateY(-40%) scale(.98); opacity: 0; pointer-events: none;
+      transition: opacity .2s, transform .2s; }
+    .sheet.open { transform: translateY(-50%); opacity: 1; pointer-events: auto; }
+  }
+  .grabber { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 4px auto 10px; }
+  .sheet h2 { margin: 0 0 4px; font-size: 20px; }
+  .field { margin-top: 18px; }
+  .label { font-size: 13px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt { border: 2px solid transparent; border-radius: 12px; padding: 9px 14px; background: var(--soft); font-weight: 600; font-size: 15px; }
+  .opt.sel { border-color: var(--ink); background: var(--card); }
+  .opt.small { padding: 6px 10px; font-size: 14px; }
+  .song-opt { border: 3px solid transparent; border-radius: 10px; padding: 7px 11px; font-weight: 650; font-size: 14px; }
+  .song-opt.sel { border-color: var(--ink); box-shadow: 0 0 0 2px var(--card) inset; }
+  .song-opt.none { background: var(--soft); }
+  .song-opt.add { background: none; border: 2px dashed var(--line); }
+  input[type=datetime-local], input[type=text], input[type=number], input[type=time], textarea {
+    width: 100%; font: inherit; padding: 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+  input[hidden] { display: none; }
+  .new-song { display: none; gap: 8px; margin-top: 10px; }
+  .new-song.open { display: flex; }
+  .new-song button { border: 0; border-radius: 12px; padding: 0 16px; background: var(--accent); color: var(--accent-ink); font-weight: 650; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .warn { display: none; margin-top: 16px; padding: 12px; border-radius: 12px; background: var(--retard-bg); color: var(--retard); font-size: 14px; }
+  .warn.open { display: block; }
+  .sheet-actions { display: flex; gap: 10px; margin-top: 22px; }
+  .sheet-actions button { border: 0; border-radius: 14px; padding: 15px; font-weight: 700; font-size: 16px; }
+  .cancel { background: var(--soft); flex: 0 0 auto; padding-left: 20px !important; padding-right: 20px !important; }
+  .submit { flex: 1; background: var(--accent); color: var(--accent-ink); }
+  .submit:disabled { opacity: .5; }
+
+  .month-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+  .month-nav button { border: 0; background: var(--soft); border-radius: 10px; width: 44px; height: 38px; font-size: 20px; }
+  .month-label { display: inline-block; font-weight: 700; }
+  .r-total { margin-top: 12px; font-weight: 650; font-size: 15px; }
+  .recap-text { margin-top: 14px; min-height: 130px; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translate(-50%, 20px);
+    background: var(--ink); color: var(--bg); padding: 12px 14px 12px 16px; border-radius: 14px; display: flex; gap: 14px; align-items: center;
+    opacity: 0; pointer-events: none; transition: .2s; max-width: calc(100% - 32px); font-weight: 600; font-size: 15px; z-index: 12; }
+  @media (min-width: 900px) { .toast { bottom: 24px; left: calc(50% + 116px); } }
+  .toast.open { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  .toast button { background: none; border: 0; color: inherit; text-decoration: underline; font-weight: 700; padding: 0; }
+  .error { padding: 24px; background: var(--card); border-radius: 18px; color: var(--retard); }
+  .error .btn-soft { display: block; margin-top: 14px; color: var(--ink); }
+
+  .head-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stats-btn { border: 0; padding: 8px 12px; border-radius: 12px; background: var(--card); box-shadow: var(--shadow);
+    font-weight: 600; font-size: 15px; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+  .kpi { background: var(--soft); border-radius: 12px; padding: 10px; }
+  .kpi b { display: block; font-size: 18px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--muted); font-size: 12.5px; }
+  .bars { display: flex; align-items: flex-end; gap: 4px; height: 130px; margin-top: 16px; }
+  .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px;
+    height: 100%; background: none; border: 0; padding: 0; min-width: 0; }
+  .bar i { display: block; width: 100%; border-radius: 6px 6px 2px 2px; background: var(--line); min-height: 3px; }
+  .bar.sel i { background: var(--ink); }
+  .bar small { color: var(--muted); font-size: 11px; }
+  .bar.sel small { color: var(--ink); font-weight: 700; }
+  .s-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .s-row:last-child { border-bottom: 0; }
+  .s-row .s-name { flex: 1; min-width: 0; font-weight: 600; }
+  .s-row .s-num { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .s-row .s-amt { font-weight: 650; font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; }
+  .quick { display: grid; gap: 10px; margin-bottom: 14px; }
+  .quick-card { background: var(--accent); color: var(--accent-ink); border-radius: 18px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .quick-top { font-size: 13px; opacity: .75; font-weight: 600; }
+  .quick-title { font-size: 18px; font-weight: 750; margin: 2px 0 8px; }
+  .quick-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 14px; font-weight: 600; }
+  .quick-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .quick-actions button { border: 0; border-radius: 12px; padding: 12px; font-weight: 700; font-size: 15px; }
+  .quick-actions .go { flex: 1; background: var(--accent-ink); color: var(--accent); }
+  .quick-actions .alt { background: rgba(127,127,127,.25); color: inherit; }
+  button.h-row { width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line); text-align: left; }
+  button.h-row:active { background: var(--soft); }
+  .h-edit { color: var(--muted); font-size: 18px; line-height: 1; }
+  .delete { display: none; background: var(--retard-bg); color: var(--retard); flex: 0 0 auto; padding-left: 16px !important; padding-right: 16px !important; }
+  #sheet.edit .delete { display: block; }
+  #sheet.edit .cancel { display: none; }
+  .set-group { background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 6px 16px; margin-bottom: 18px; }
+  .set-title { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 4px 8px; }
+  .set-row { padding: 12px 0; border-top: 1px solid var(--line); }
+  .set-row:first-child { border-top: 0; }
+  .set-row.inline { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .set-label { font-weight: 600; }
+  .set-help { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .seg .opt { padding: 8px 12px; font-size: 14.5px; }
+  .switch { position: relative; flex: none; width: 50px; height: 30px; border: 0; border-radius: 99px; background: var(--line); padding: 0; transition: background .15s; }
+  .switch::after { content: ''; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .15s; }
+  .switch[aria-checked="true"] { background: var(--avance); }
+  .switch[aria-checked="true"]::after { transform: translateX(20px); }
+  .set-btn { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 12px 0; border-top: 1px solid var(--line); font-weight: 600; color: var(--ink); text-decoration: none; }
+  .set-btn:first-child { border-top: 0; }
+  .set-btn:disabled { opacity: .5; }
+  .set-btn .set-help { font-weight: 400; }
+  .set-foot { color: var(--muted); font-size: 13px; text-align: center; margin: 6px 0 20px; }
+  @media (max-width: 899px) { .nav-item.ext { display: none; } }
+</style>
+<script>
+  // Thème et taille appliqués avant l'affichage, pour éviter un flash.
+  try {
+    const p = JSON.parse(localStorage.getItem('cours-batterie:prefs') || '{}');
+    if (p.theme === 'light' || p.theme === 'dark') document.documentElement.dataset.theme = p.theme;
+    if (p.taille === 'grand') document.documentElement.dataset.taille = 'grand';
+  } catch (e) {}
+</script>
 </head>
 <body>
-<main>
-  <img src="./icone-512.png" alt="">
-  <h1>Cours de batterie</h1>
-  <p>Ajoute l'application sur ton écran d'accueil :</p>
-  <ol>
-    <li>Touche le bouton <b>Partager</b> (carré avec une flèche).</li>
-    <li>Choisis <b>« Sur l'écran d'accueil »</b>.</li>
-    <li>Touche <b>Ajouter</b>.</li>
-  </ol>
-  <a class="btn" href="https://sites.google.com/view/coursdebatterie">Ouvrir l'interface</a>
-</main>
+<div class="wrap">
+  <header>
+    <div class="today"><span id="today"></span> <span class="sync" id="sync"></span></div>
+    <h1 id="viewTitle">🥁 Cours de batterie</h1>
+    <div class="head-row">
+      <button type="button" class="summary" id="summary" hidden></button>
+    </div>
+  </header>
+  <main>
+    <section class="view" id="v-accueil">
+      <div id="quick" class="quick"></div>
+      <div id="week"></div>
+      <div id="accueilVide" class="empty" hidden>Aucun cours prévu cette semaine.</div>
+    </section>
+    <section class="view" id="v-eleves">
+      <div id="dash" class="grid"><div class="skeleton"></div><div class="skeleton"></div></div>
+      <div id="others"></div>
+      <button type="button" class="add-student" id="addStudent" hidden>＋ Ajouter un élève</button>
+    </section>
+    <section class="view" id="v-stats"><div id="statsView"></div></section>
+    <section class="view" id="v-reglages"><div id="settingsView"></div></section>
+  </main>
+</div>
+
+<nav class="nav" aria-label="Navigation">
+  <div class="nav-brand">🥁 Cours de batterie</div>
+  <button type="button" class="nav-item" data-view="accueil">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+    <span>Accueil</span></button>
+  <button type="button" class="nav-item" data-view="eleves">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.6c2.6.2 4.4 1.9 5 4.6"/></svg>
+    <span>Élèves</span></button>
+  <button type="button" class="nav-item add" id="navAdd" disabled>
+    <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+    <span class="short">Cours</span><span class="long">Ajouter un cours</span></button>
+  <button type="button" class="nav-item" data-view="stats">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+    <span class="short">Stats</span><span class="long">Statistiques</span></button>
+  <button type="button" class="nav-item" data-view="reglages">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span class="short">Réglages</span><span class="long">Paramètres</span></button>
+  <a class="nav-item ext" href="https://docs.google.com/spreadsheets/d/1UJQ63EFZF4X1IMLQSYmxCQJbW2Ajku0U4amvIgxscnQ/edit" target="_blank" rel="noopener">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+    <span>Tableur</span></a>
+</nav>
+
+<div class="sheet-bg" id="sheetBg"></div>
+<form class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="grabber"></div>
+  <h2 id="sheetTitle">Ajouter un cours</h2>
+
+  <div class="field">
+    <div class="label">Élève</div>
+    <div class="choices" id="studentChoices"></div>
+  </div>
+
+  <div class="field">
+    <div class="label">Date et heure</div>
+    <input type="datetime-local" id="when" step="1800" required>
+    <div class="agenda-picks" id="agendaPicks"></div>
+  </div>
+
+  <div class="field">
+    <div class="label">Durée</div>
+    <div class="choices" id="durationChoices"></div>
+  </div>
+
+  <div class="field">
+    <div class="label">Morceau travaillé</div>
+    <div class="choices" id="songChoices"></div>
+    <div class="new-song" id="newSong">
+      <input type="text" id="newSongName" placeholder="Nom du nouveau morceau" autocomplete="off">
+      <button type="button" id="saveSong">Ajouter</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <div class="label">Montant payé</div>
+    <div class="choices" id="amountChoices"></div>
+    <div class="hint" id="amountHint"></div>
+  </div>
+
+  <div class="warn" id="warn"></div>
+
+  <div class="sheet-actions">
+    <button type="button" class="cancel" id="cancel">Annuler</button>
+    <button type="button" class="delete" id="delete">Supprimer</button>
+    <button type="submit" class="submit" id="submit">Enregistrer</button>
+  </div>
+</form>
+
+<!-- Panneau secondaire : récap du mois, réglages / ajout d'un élève. -->
+<div class="sheet" id="panel" role="dialog" aria-modal="true"><div class="grabber"></div><div id="panelBody"></div></div>
+
+<div class="toast" id="toast" role="status"><span id="toastMsg"></span><button type="button" id="toastAction" hidden></button></div>
+
+<script>
+  let DATA = null;
+  // mode 'add' : nouveau cours ; mode 'edit' : cours existant (row = ligne du Sheet).
+  const form = { mode: 'add', row: null, student: null, song: '', amount: null, duration: 60, force: false };
+  const DUREE_DEFAUT = 60;
+  const DUREES = [30, 45, 60, 90, 120];
+  // 90 → "1 h 30", 45 → "45 min"
+  const fmtDuree = min => { const h = Math.floor(min / 60), m = min % 60; return h ? `${h} h${m ? ' ' + String(m).padStart(2, '0') : ''}` : `${m} min`; };
+  const durOf = h => h.duration || DUREE_DEFAUT;
+  const durTag = h => durOf(h) !== DUREE_DEFAUT ? `<span class="h-dur">${fmtDuree(durOf(h))}</span>` : '';
+  let lastUndo = null;
+  let busy = 0; // enregistrements en cours : un rafraîchissement ne doit pas les écraser.
+
+  const CACHE_KEY = 'cours-batterie:data:v3';
+  const $ = id => document.getElementById(id);
+  const euros = n => n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+  const esc = s => { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+  const JOURS = ['dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  const p2 = n => String(n).padStart(2, '0');
+  const isoDate = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  const isoLocal = d => `${isoDate(d)}T${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  // 'YYYY-MM-DD' ou 'YYYY-MM-DDTHH:mm' → Date locale
+  const parseIso = s => {
+    const [d, t = '00:00'] = String(s).split('T');
+    const [y, m, j] = d.split('-').map(Number);
+    const [h, mi] = t.split(':').map(Number);
+    return new Date(y, m - 1, j, h || 0, mi || 0);
+  };
+  const hhmm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  const studentOf = name => DATA.students.find(s => s.name === name);
+  const songOf = name => DATA.songs.find(s => s.name === name);
+  const chip = name => {
+    if (!name) return '<span class="chip" style="background:var(--soft)">—</span>';
+    const s = songOf(name) || { bg: 'var(--soft)', fg: 'var(--ink)' };
+    return `<span class="chip" style="background:${s.bg};color:${s.fg}">${esc(name)}</span>`;
+  };
+  /* ---------- Préférences (propres à cet appareil) ---------- */
+  const PREFS_KEY = 'cours-batterie:prefs';
+  const PREF_DEFAUT = { theme: 'auto', taille: 'normal', ouverture: 'derniere', duree: 60, vibration: true, annuler: 8, agenda: true };
+  const PREF = Object.assign({}, PREF_DEFAUT, (() => { try { return JSON.parse(localStorage.getItem(PREFS_KEY) || '{}'); } catch (e) { return {}; } })());
+  function savePref(k, v) {
+    PREF[k] = v;
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(PREF)); } catch (e) {}
+    appliquerAffichage();
+  }
+  function appliquerAffichage() {
+    const r = document.documentElement;
+    if (PREF.theme === 'auto') delete r.dataset.theme; else r.dataset.theme = PREF.theme;
+    if (PREF.taille === 'grand') r.dataset.taille = 'grand'; else delete r.dataset.taille;
+  }
+  appliquerAffichage();
+  const vibrate = () => { if (!PREF.vibration) return; try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {} };
+
+  // "ven. 07/11 · 14:00" ou "Sem. du 03/11/26"
+  function fmtWhen(h) {
+    if (h.datetime) {
+      const d = parseIso(h.datetime);
+      return `${d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' })} · ${hhmm(d)}`;
+    }
+    if (h.week) return 'Sem. du ' + parseIso(h.week).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    return h.when || '';
+  }
+
+  function libelle(balance, price) {
+    if (Math.abs(balance) < 0.001) return 'À jour';
+    const n = price ? Math.round(Math.abs(balance) / price * 10) / 10 : 0;
+    const cours = n ? ` (${String(n).replace('.', ',')} cours)` : '';
+    return (balance > 0 ? 'Payé d\'avance' : 'À payer') + cours;
+  }
+
+  function call(fn, ...args) {
+    return new Promise((ok, ko) =>
+      google.script.run.withSuccessHandler(ok).withFailureHandler(ko)[fn](...args));
+  }
+
+  function toast(msg, action) {
+    $('toastMsg').textContent = msg;
+    const b = $('toastAction');
+    b.hidden = !action;
+    if (action) { b.textContent = action.label; b.onclick = action.run; }
+    $('toast').classList.add('open');
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => $('toast').classList.remove('open'), action ? (PREF.annuler || 8) * 1000 : 3000);
+  }
+
+  /* ---------- Cache local : affichage instantané ---------- */
+
+  function loadCache() {
+    try { return JSON.parse(localStorage.getItem(CACHE_KEY) || 'null'); } catch (e) { return null; }
+  }
+  function saveCache(d) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(d)); } catch (e) {}
+  }
+  const setSync = txt => { $('sync').textContent = txt ? '· ' + txt : ''; };
+
+  /* ---------- Horaires habituels ---------- */
+
+  // "Vendredi 14h" / "mercredi 16h30" → { day: 5, h: 14, m: 30 }
+  function parseUsual(txt) {
+    const m = String(txt).toLowerCase().match(/(dimanche|lundi|mardi|mercredi|jeudi|vendredi|samedi)\D*(\d{1,2})\s*h\s*(\d{2})?/);
+    return m ? { day: JOURS.indexOf(m[1]), h: Number(m[2]), m: Number(m[3] || 0) } : null;
+  }
+  const fmtUsual = (day, time) => {
+    const [h, m] = String(time || '18:00').split(':').map(Number);
+    return `${cap(JOURS[day])} ${h}h${m ? p2(m) : ''}`;
+  };
+  const mondayOf = d => new Date(d.getFullYear(), d.getMonth(), d.getDate() - (d.getDay() + 6) % 7);
+
+  // Date du créneau habituel dans la semaine qui commence le lundi `monday`.
+  function usualIn(student, monday) {
+    const u = parseUsual(student.usual);
+    if (!u) return null;
+    return new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + (u.day + 6) % 7, u.h, u.m);
+  }
+  const doneThisWeek = s => s.history.find(h => h.week === isoDate(mondayOf(new Date())));
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n, d.getHours(), d.getMinutes());
+
+  /* ---------- Agenda PRESTATIONS (lecture seule) ---------- */
+
+  // Cours de l'élève trouvés dans l'agenda, du plus ancien au plus récent.
+  const agendaOf = s => PREF.agenda ? ((DATA.agenda && DATA.agenda.events) || []).filter(e => e.student === s.name) : [];
+
+  // Créneau de l'élève pour la semaine du lundi `monday` : le cours de l'agenda s'il y en a un,
+  // sinon l'horaire habituel. → { date, duration, src: 'agenda' | 'habituel', title }
+  function slotIn(s, monday) {
+    const fin = addDays(monday, 7);
+    const ev = agendaOf(s).find(e => { const d = parseIso(e.start); return d >= monday && d < fin; });
+    if (ev) return { date: parseIso(ev.start), duration: ev.duration || DUREE_DEFAUT, src: 'agenda', title: ev.title };
+    const u = usualIn(s, monday);
+    return u ? { date: u, duration: PREF.duree || DUREE_DEFAUT, src: 'habituel' } : null;
+  }
+  const agendaAt = (s, iso) => agendaOf(s).find(e => e.start === iso);
+
+  // Prochain cours pas encore passé (ni déjà noté cette semaine), agenda ou horaire habituel.
+  function nextLesson(s) {
+    const now = new Date();
+    const lundi = mondayOf(now);
+    for (let k = 0; k < 6; k++) {
+      const sl = slotIn(s, addDays(lundi, 7 * k));
+      if (!sl) continue;
+      if (k === 0 && (doneThisWeek(s) || sl.date.getTime() < now.getTime() - 3600e3)) continue;
+      return sl;
+    }
+    return null;
+  }
+
+  // Montant proposé pour une durée : le tarif proportionnel s'il est dans la liste, sinon le tarif de l'élève.
+  function montantPour(s, duration) {
+    const du = s.price * duration / 60;
+    if (DATA.amounts.includes(du)) return du;
+    return DATA.amounts.includes(s.price) ? s.price : DATA.amounts[0];
+  }
+
+  function daysSince(iso) {
+    const d = parseIso(iso), t = new Date();
+    return Math.round((new Date(t.getFullYear(), t.getMonth(), t.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 864e5);
+  }
+
+  // Élèves dont c'est le cours aujourd'hui (à partir d'1 h avant), pas encore noté cette semaine.
+  function coursDuJour() {
+    const now = new Date();
+    return DATA.students.map(s => ({ s, sl: slotIn(s, mondayOf(now)) })).filter(({ s, sl }) => {
+      if (!sl || isoDate(sl.date) !== isoDate(now)) return false;
+      if (now < new Date(sl.date.getTime() - 3600e3)) return false;
+      return !doneThisWeek(s);
+    });
+  }
+
+  /* ---------- Dashboard ---------- */
+
+  function render(data, opts) {
+    DATA = data;
+    if (!opts || opts.save !== false) saveCache(data);
+    $('navAdd').disabled = false;
+    $('addStudent').hidden = false;
+    renderQuick();
+    renderWeek();
+    const main = data.students.filter(s => s.main);
+    const autres = data.students.filter(s => !s.main);
+
+    const du = data.students.filter(s => s.kind === 'retard').reduce((t, s) => t - s.balance, 0);
+    $('summary').hidden = false;
+    $('summary').innerHTML = du > 0
+      ? `<span class="dot" style="background:var(--retard)"></span>À encaisser : ${euros(du)}`
+      : `<span class="dot" style="background:var(--avance)"></span>Tout le monde est à jour`;
+
+    const ouverts = new Set([...document.querySelectorAll('.card.open')].map(c => c.dataset.name));
+    const autresOuvert = !!document.querySelector('.others[open]');
+    $('dash').innerHTML = main.map(card).join('');
+    $('others').innerHTML = autres.length
+      ? `<details class="others" ${autresOuvert ? 'open' : ''}><summary>Autres élèves (${autres.length})</summary><div class="grid">${autres.map(card).join('')}</div></details>`
+      : '';
+    document.querySelectorAll('.card').forEach(c => { if (ouverts.has(c.dataset.name)) c.classList.add('open'); });
+  }
+
+  function renderQuick() {
+    $('quick').innerHTML = coursDuJour().map(({ s, sl }) => {
+      const montant = montantPour(s, sl.duration);
+      const source = sl.src === 'agenda' ? '📅 Agenda' : 'Cours habituel';
+      return `<div class="quick-card">
+        <div class="quick-top">${source} · aujourd'hui ${hhmm(sl.date)}</div>
+        <div class="quick-title">${esc(s.name)}</div>
+        <div class="quick-meta">${chip(s.lastSong)}${sl.duration !== DUREE_DEFAUT ? `<span>${fmtDuree(sl.duration)}</span>` : ''}<span>${euros(montant)}</span></div>
+        <div class="quick-actions">
+          <button type="button" class="go" data-quick="${esc(s.name)}">✓ Enregistrer le cours</button>
+          <button type="button" class="alt" data-add="${esc(s.name)}">Modifier</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Semaine en cours : chaque élève à son cours de l'agenda (📅) ou à son horaire habituel, avec son état.
+  function renderWeek() {
+    const now = new Date();
+    const monday = mondayOf(now);
+    const items = DATA.students
+      .map(s => ({ s, sl: slotIn(s, monday) }))
+      .filter(x => x.sl && (x.s.main || x.sl.src === 'agenda'))
+      .sort((a, b) => a.sl.date - b.sl.date);
+    const ag = DATA.agenda || {};
+    const pied = ag.error ? `<div class="week-foot">Agenda non lu : ${esc(ag.error)}</div>`
+      : items.some(x => x.sl.src === 'agenda') ? '<div class="week-foot">📅 = prévu dans l\'agenda PRESTATIONS · en italique = horaire habituel</div>' : '';
+    $('accueilVide').hidden = !!items.length || coursDuJour().length > 0;
+    if (!items.length) { $('week').innerHTML = pied ? `<div class="week">${pied}</div>` : ''; return; }
+    let faits = 0;
+    const rows = items.map(({ s, sl }) => {
+      const quand = sl.date;
+      const fait = doneThisWeek(s);
+      if (fait) faits++;
+      const etat = fait ? 'fait' : quand <= now ? 'a-noter' : 'a-venir';
+      const libelleEtat = fait ? `✓ ${euros(fait.amount)}` : etat === 'a-noter' ? 'À noter' : 'À venir';
+      const jour = quand.toLocaleDateString('fr-FR', { weekday: 'short' });
+      return `<button type="button" class="w-row ${etat} ${sl.src} ${isoDate(quand) === isoDate(now) ? 'auj' : ''}"
+          data-wk="${esc(s.name)}" data-when="${isoLocal(quand)}" data-row="${fait && fait.row ? fait.row : ''}"
+          ${sl.title ? `title="${esc(sl.title)}"` : ''}>
+        <span class="w-day">${cap(jour)} ${hhmm(quand)}</span>
+        <span class="w-name">${esc(s.name)}${sl.src === 'agenda' ? '<span class="w-src" aria-label="dans l\'agenda">📅</span>' : ''}</span>
+        <span class="w-state">${libelleEtat}</span></button>`;
+    }).join('');
+    const fin = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
+    const f = d => d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    $('week').innerHTML = `<div class="week"><div class="week-head">Cette semaine <span>${f(monday)} – ${f(fin)} · ${faits}/${items.length} notés</span></div>${rows}${pied}</div>`;
+  }
+
+  function sinceLine(s) {
+    const parts = [];
+    let stale = false;
+    if (s.last) {
+      const n = daysSince(s.last);
+      stale = s.main && n > 21;
+      parts.push(n <= 0 ? 'Dernier cours aujourd\'hui' : n === 1 ? 'Dernier cours hier' : `Dernier cours il y a ${n} j`);
+    } else parts.push('Aucun cours encore');
+    const next = nextLesson(s);
+    if (next) parts.push('prochain ' + next.date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
+      + (next.src === 'agenda' ? ' ' + hhmm(next.date) + ' 📅' : ''));
+    return `<div class="since ${stale ? 'stale' : ''}">${esc(parts.join(' · '))}</div>`;
+  }
+
+  function progression(s) {
+    const list = s.songStats || [];
+    if (!list.length) return '';
+    const f = iso => parseIso(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+    return `<div class="progress"><div class="label">Morceaux travaillés</div>${list.map(x =>
+      `<div class="p-row">${chip(x.name)}<span>${x.count} séance${x.count > 1 ? 's' : ''}${x.first ? ' · depuis le ' + f(x.first) : ''}</span></div>`).join('')}</div>`;
+  }
+
+  function card(s) {
+    const hist = s.history.length
+      ? s.history.map(h => h.row
+        ? `<button type="button" class="h-row" data-edit="${esc(s.name)}" data-row="${h.row}">
+            <span class="h-when">${esc(fmtWhen(h))}</span>
+            <span class="h-song">${chip(h.song)}</span>${durTag(h)}<span class="h-amount">${euros(h.amount)}</span>
+            <span class="h-edit" aria-hidden="true">›</span></button>`
+        : `<div class="h-row pending"><span class="h-when">${esc(fmtWhen(h))}</span>
+            <span class="h-song">${chip(h.song)}</span>${durTag(h)}<span class="h-amount">${euros(h.amount)}</span></div>`).join('')
+      : '<div class="hint">Aucun cours enregistré.</div>';
+    return `<div class="card" data-name="${esc(s.name)}">
+      <button type="button" class="card-head" data-toggle="${esc(s.name)}" aria-label="Historique de ${esc(s.name)}">
+        <span class="avatar ${s.kind}">${esc(s.name.charAt(0).toUpperCase())}</span>
+        <span class="who"><div class="name">${esc(s.name)}</div><div class="usual">${esc(s.usual)}</div>${sinceLine(s)}</span>
+        <span class="money"><div class="balance">${s.balance > 0 ? '+' : ''}${euros(s.balance)}</div>
+          <span class="pill ${s.kind}">${esc(s.status)}</span></span>
+      </button>
+      <div class="card-actions">
+        <button type="button" class="btn-soft" data-toggle="${esc(s.name)}">Historique</button>
+        <button type="button" class="btn-soft primary" data-add="${esc(s.name)}">＋ Cours</button>
+      </div>
+      <div class="history">${hist}
+        <div class="h-meta"><span>${s.lessons} cours${s.hours != null && Math.abs(s.hours - s.lessons) > 0.01 ? ` (${String(Math.round(s.hours * 100) / 100).replace('.', ',')} h)` : ''} · ${euros(s.paid)} reçus · ${euros(s.price)}/h</span>
+          ${s.kind !== 'ok' ? `<button type="button" class="link" data-recaler="${esc(s.name)}">Marquer à jour</button>` : ''}</div>
+        ${progression(s)}
+        <div class="card-more">
+          <button type="button" class="btn-soft" data-recap="${esc(s.name)}">Récap du mois</button>
+          <button type="button" class="btn-soft" data-settings="${esc(s.name)}">Réglages</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  document.addEventListener('click', async e => {
+    if (e.target.id === 'retry') { $('dash').innerHTML = '<div class="skeleton"></div>'; load(); return; }
+    const t = e.target.closest('[data-toggle],[data-add],[data-recaler],[data-edit],[data-quick],[data-wk],[data-recap],[data-settings]');
+    if (!t || t.closest('#sheet,#panel')) return;
+    if (t.dataset.toggle) t.closest('.card').classList.toggle('open');
+    if (t.dataset.add) openSheet(t.dataset.add);
+    if (t.dataset.edit) openEdit(t.dataset.edit, Number(t.dataset.row));
+    if (t.dataset.quick) quickSave(t.dataset.quick, t);
+    if (t.dataset.recap) openRecap(t.dataset.recap, isoDate(new Date()).slice(0, 7));
+    if (t.dataset.settings) openStudentForm(t.dataset.settings);
+    if (t.dataset.wk) {
+      if (t.dataset.row) openEdit(t.dataset.wk, Number(t.dataset.row));
+      else openSheet(t.dataset.wk, t.dataset.when);
+    }
+    if (t.dataset.recaler) {
+      const name = t.dataset.recaler;
+      if (!confirm(`Considérer ${name} comme à jour à partir de maintenant ?`)) return;
+      try { render(await call('recaler', name)); toast(name + ' est à jour'); }
+      catch (err) { toast('Erreur : ' + err.message); }
+    }
+  });
+  $('addStudent').onclick = () => openStudentForm(null);
+
+  // Ajoute le cours tout de suite à l'écran, avant la réponse du serveur.
+  function optimiste(name, quand, song, amount, duration) {
+    const d = JSON.parse(JSON.stringify(DATA));
+    const s = d.students.find(x => x.name === name);
+    s.lessons++;
+    s.hours = (s.hours || 0) + duration / 60;
+    s.paid += amount;
+    s.balance += amount - s.price * duration / 60;
+    s.kind = s.balance > 0.001 ? 'avance' : s.balance < -0.001 ? 'retard' : 'ok';
+    s.status = libelle(s.balance, s.price);
+    s.last = isoDate(quand);
+    if (song) s.lastSong = song;
+    s.history.unshift({ row: null, week: isoDate(mondayOf(quand)), datetime: isoLocal(quand), song, amount, duration });
+    return d;
+  }
+
+  async function quickSave(name, btn) {
+    const s = studentOf(name);
+    const sl = slotIn(s, mondayOf(new Date()));
+    const quand = sl.date;
+    const duration = sl.duration;
+    const amount = montantPour(s, duration);
+    const song = s.lastSong || '';
+    const avant = DATA;
+    btn.disabled = true;
+    busy++;
+    render(optimiste(name, quand, song, amount, duration), { save: false });
+    vibrate();
+    toast(`Cours de ${name} enregistré`);
+    try {
+      const res = await call('addLesson', { student: name, datetime: isoLocal(quand), song, amount, duration, force: false });
+      if (res.needConfirm) { render(avant, { save: false }); openSheet(name, isoLocal(quand)); return; }
+      done(res, `Cours de ${name} enregistré`);
+    } catch (err) {
+      render(avant, { save: false });
+      toast('Pas enregistré : ' + err.message);
+    } finally { busy--; }
+  }
+
+  // Après un enregistrement : rafraîchit, ferme le formulaire, propose d'annuler.
+  function done(res, msg) {
+    render(res.data);
+    closeSheet();
+    vibrate();
+    lastUndo = res.undo;
+    toast(msg, { label: 'Annuler', run: undo });
+  }
+
+  async function undo() {
+    if (!lastUndo) return;
+    const u = lastUndo; lastUndo = null;
+    $('toast').classList.remove('open');
+    try { render(await call('annulerCours', u)); toast('Modification annulée'); }
+    catch (err) { toast('Erreur : ' + err.message); }
+  }
+
+  /* ---------- Formulaire de cours ---------- */
+
+  // Maintenant − 1 h, arrondi à la demi-heure inférieure.
+  function defaultWhen() {
+    const d = new Date(Date.now() - 3600e3);
+    d.setMinutes(d.getMinutes() < 30 ? 0 : 30, 0, 0);
+    return isoLocal(d);
+  }
+
+  // Date proposée pour un nouveau cours : le créneau de cette semaine (agenda ou habituel) s'il est
+  // commencé et pas encore noté, sinon maintenant − 1 h.
+  function whenFor(s) {
+    const sl = slotIn(s, mondayOf(new Date()));
+    const ok = sl && !doneThisWeek(s) && sl.date.getTime() <= Date.now() + 3600e3;
+    return ok ? isoLocal(sl.date) : defaultWhen();
+  }
+
+  function openSheet(studentName, whenIso) {
+    const now = new Date();
+    // Sans élève choisi : celui dont le cours (agenda ou habituel) est le plus proche aujourd'hui.
+    const duJour = DATA.students.map(x => ({ x, sl: slotIn(x, mondayOf(now)) }))
+      .filter(o => o.sl && isoDate(o.sl.date) === isoDate(now))
+      .sort((a, b) => Math.abs(a.sl.date - now) - Math.abs(b.sl.date - now))[0];
+    const premier = DATA.students.find(x => x.main) || DATA.students[0];
+    const s = studentOf(studentName || (duJour ? duJour.x : premier).name);
+    setMode('add', null);
+    form.autoWhen = !whenIso;
+    $('when').value = whenIso || whenFor(s);
+    selectStudent(s.name);
+    showSheet();
+  }
+
+  function openEdit(name, row) {
+    const s = studentOf(name);
+    const h = s.history.find(x => x.row === row);
+    if (!h) return;
+    setMode('edit', row);
+    let when = h.datetime;
+    if (!when && h.week) {
+      const u = usualIn(s, parseIso(h.week));
+      when = isoLocal(u || new Date(parseIso(h.week).setHours(12)));
+    }
+    $('when').value = when;
+    form.student = name;
+    form.song = h.song;
+    form.amount = h.amount;
+    form.duration = durOf(h);
+    renderChoices();
+    checkConflict();
+    showSheet();
+  }
+
+  function setMode(mode, row) {
+    form.mode = mode;
+    form.row = row;
+    form.force = false;
+    $('warn').classList.remove('open');
+    $('newSong').classList.remove('open');
+    $('sheet').classList.toggle('edit', mode === 'edit');
+    $('sheetTitle').textContent = mode === 'edit' ? 'Modifier le cours' : 'Ajouter un cours';
+    $('submit').textContent = 'Enregistrer';
+  }
+
+  // Un autre cours est-il déjà noté la semaine de la date choisie ? Recalculé à chaque changement
+  // d'élève ou de date, pour que « Remplacer » ne s'applique jamais à une semaine qu'on n'a pas vue.
+  function checkConflict() {
+    form.force = false;
+    $('warn').classList.remove('open');
+    $('submit').textContent = 'Enregistrer';
+    const v = $('when').value;
+    if (!v || !form.student) return;
+    const wk = isoDate(mondayOf(parseIso(v)));
+    const s = studentOf(form.student);
+    const h = s.history.find(x => x.week === wk && x.row && x.row !== form.row);
+    if (!h) return;
+    showConflict(`${fmtWhen(h)} · ${h.song || '—'} · ${euros(h.amount)}`);
+  }
+  function showConflict(existing) {
+    form.force = true;
+    $('warn').textContent = `Un cours est déjà noté cette semaine-là pour ${form.student} (${existing}). Enregistrer le remplacera.`;
+    $('warn').classList.add('open');
+    $('submit').textContent = 'Remplacer ce cours';
+  }
+  const onWhen = () => { form.autoWhen = false; checkConflict(); renderAgendaPicks(); };
+  $('when').addEventListener('input', onWhen);
+  $('when').addEventListener('change', onWhen);
+
+  function showSheet() {
+    $('panel').classList.remove('open');
+    $('sheetBg').classList.add('open');
+    $('sheet').classList.add('open');
+    setTimeout(() => { const f = $('sheet').querySelector('.opt.sel, .opt'); if (f) f.focus({ preventScroll: true }); }, 50);
+  }
+  function closeSheet() {
+    $('sheetBg').classList.remove('open');
+    $('sheet').classList.remove('open');
+    $('panel').classList.remove('open');
+  }
+
+  function selectStudent(name) {
+    form.student = name;
+    const s = studentOf(name);
+    // Tant que la date n'a pas été touchée, elle suit le créneau de l'élève choisi.
+    if (form.mode === 'add' && form.autoWhen) $('when').value = whenFor(s);
+    const ev = agendaAt(s, $('when').value);
+    form.song = s.lastSong || '';
+    form.duration = ev ? ev.duration : (PREF.duree || DUREE_DEFAUT);
+    form.amount = montantPour(s, form.duration);
+    renderChoices();
+    checkConflict();
+  }
+
+  // Cours de l'agenda de l'élève (3 semaines avant → 1 semaine après) : un tap remplit date et durée.
+  function renderAgendaPicks() {
+    const s = studentOf(form.student);
+    const now = Date.now();
+    const evs = s ? agendaOf(s).filter(e => { const t = parseIso(e.start).getTime(); return t >= now - 21 * 864e5 && t <= now + 7 * 864e5; }) : [];
+    if (!evs.length) { $('agendaPicks').innerHTML = ''; return; }
+    const v = $('when').value;
+    $('agendaPicks').innerHTML = '<div class="label">📅 Dans l\'agenda</div>' + evs.slice(-6).map(e => {
+      const d = parseIso(e.start);
+      const lib = `${d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })} ${hhmm(d)}`;
+      return `<button type="button" class="opt small ${e.start === v ? 'sel' : ''}" aria-pressed="${e.start === v}" data-agenda="${e.start}" title="${esc(e.title)}">${lib}</button>`;
+    }).join('');
+  }
+
+  function renderChoices() {
+    const s = studentOf(form.student);
+    // En modification, l'élève ne change pas.
+    const ordre = form.mode === 'edit' ? [s]
+      : DATA.students.filter(x => x.main).concat(DATA.students.filter(x => !x.main));
+    $('studentChoices').innerHTML = ordre.map(x =>
+      `<button type="button" class="opt ${x.main ? '' : 'small'} ${x.name === form.student ? 'sel' : ''}" aria-pressed="${x.name === form.student}" data-student="${esc(x.name)}">${esc(x.name)}</button>`).join('');
+
+    // Morceaux récents de l'élève d'abord, puis les autres.
+    const recents = [...new Set(s.history.map(h => h.song).filter(Boolean))];
+    const songs = recents.filter(songOf).concat(DATA.songs.map(x => x.name).filter(n => !recents.includes(n)));
+    $('songChoices').innerHTML =
+      `<button type="button" class="song-opt none ${form.song === '' ? 'sel' : ''}" aria-pressed="${form.song === ''}" data-song="">Aucun</button>` +
+      songs.map(n => { const c = songOf(n);
+        return `<button type="button" class="song-opt ${n === form.song ? 'sel' : ''}" aria-pressed="${n === form.song}" style="background:${c.bg};color:${c.fg}" data-song="${esc(n)}">${esc(n)}</button>`; }).join('') +
+      `<button type="button" class="song-opt add" id="addSongBtn">＋ Nouveau</button>`;
+
+    renderAgendaPicks();
+    const durees = DUREES.includes(form.duration) ? DUREES : DUREES.concat(form.duration).sort((a, b) => a - b);
+    $('durationChoices').innerHTML = durees.map(d =>
+      `<button type="button" class="opt ${d === form.duration ? 'sel' : ''}" aria-pressed="${d === form.duration}" data-duration="${d}">${fmtDuree(d)}</button>`).join('');
+
+    const montants = DATA.amounts.includes(form.amount) ? DATA.amounts : DATA.amounts.concat(form.amount).sort((a, b) => a - b);
+    $('amountChoices').innerHTML = montants.map(a =>
+      `<button type="button" class="opt ${a === form.amount ? 'sel' : ''}" aria-pressed="${a === form.amount}" data-amount="${a}">${euros(a)}</button>`).join('');
+    const du = s.price * form.duration / 60;
+    const n = du ? form.amount / du : 0;
+    const prix = form.duration !== DUREE_DEFAUT ? `${fmtDuree(form.duration)} = ${euros(du)}` : '';
+    const detail = form.amount === 0 ? 'Cours déjà payé d\'avance'
+      : n && Number.isInteger(n) && n > 1 ? `Paie ${n} cours d'un coup` : '';
+    $('amountHint').textContent = [prix, detail].filter(Boolean).join(' · ');
+  }
+
+  $('sheet').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.agenda !== undefined) {
+      const ev = agendaAt(studentOf(form.student), b.dataset.agenda);
+      $('when').value = b.dataset.agenda;
+      form.autoWhen = false;
+      if (ev) { form.duration = ev.duration; if (form.mode === 'add') form.amount = montantPour(studentOf(form.student), ev.duration); }
+      renderChoices();
+      checkConflict();
+    }
+    else if (b.dataset.student !== undefined) { if (form.mode === 'add') selectStudent(b.dataset.student); }
+    else if (b.dataset.song !== undefined) { form.song = b.dataset.song; renderChoices(); }
+    else if (b.dataset.amount !== undefined) { form.amount = Number(b.dataset.amount); renderChoices(); }
+    else if (b.dataset.duration !== undefined) {
+      form.duration = Number(b.dataset.duration);
+      // Propose le montant correspondant à la durée quand il existe dans la liste.
+      const du = studentOf(form.student).price * form.duration / 60;
+      if (DATA.amounts.includes(du)) form.amount = du;
+      renderChoices();
+    }
+    else if (b.id === 'addSongBtn') { $('newSong').classList.toggle('open'); $('newSongName').focus(); }
+  });
+
+  $('saveSong').onclick = async () => {
+    const name = $('newSongName').value.trim();
+    if (!name) return;
+    $('saveSong').disabled = true;
+    try {
+      const data = await call('addSong', name);
+      DATA.songs = data.songs;
+      saveCache(DATA);
+      const added = data.songs.find(s => s.name.toLowerCase() === name.toLowerCase());
+      form.song = added ? added.name : form.song;
+      $('newSongName').value = '';
+      $('newSong').classList.remove('open');
+      renderChoices();
+      toast('Morceau ajouté avec sa couleur');
+    } catch (err) { toast('Erreur : ' + err.message); }
+    finally { $('saveSong').disabled = false; }
+  };
+  $('newSongName').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('saveSong').click(); } });
+
+  $('sheet').onsubmit = async e => {
+    e.preventDefault();
+    if (!$('when').value) { $('when').focus(); return; }
+    const payload = { student: form.student, row: form.row, datetime: $('when').value,
+      song: form.song, amount: form.amount, duration: form.duration, force: form.force };
+    $('submit').disabled = true;
+    $('submit').textContent = 'Enregistrement…';
+    busy++;
+    try {
+      const res = await call(form.mode === 'edit' ? 'modifierCours' : 'addLesson', payload);
+      if (res.needConfirm) { showConflict(res.existing); return; }
+      done(res, form.mode === 'edit' ? 'Cours modifié' : `Cours de ${payload.student} enregistré`);
+    } catch (err) {
+      toast('Erreur : ' + err.message);
+    } finally {
+      busy--;
+      $('submit').disabled = false;
+      if (!form.force) $('submit').textContent = 'Enregistrer';
+      else $('submit').textContent = 'Remplacer ce cours';
+    }
+  };
+
+  $('delete').onclick = async () => {
+    if (!confirm(`Supprimer ce cours de ${form.student} ?`)) return;
+    $('delete').disabled = true;
+    try { done(await call('supprimerCours', { student: form.student, row: form.row }), 'Cours supprimé'); }
+    catch (err) { toast('Erreur : ' + err.message); }
+    finally { $('delete').disabled = false; }
+  };
+
+  /* ---------- Panneau : récap du mois ---------- */
+
+  let recap = { name: '', ym: '', text: '' };
+
+  function showPanel(html) {
+    $('sheet').classList.remove('open');
+    $('panelBody').innerHTML = html;
+    $('sheetBg').classList.add('open');
+    $('panel').classList.add('open');
+  }
+
+  function recapShell(inner) {
+    const [y, m] = recap.ym.split('-').map(Number);
+    const label = new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    return `<h2>Récap · ${esc(recap.name)}</h2>
+      <div class="month-nav"><button type="button" data-month="-1" aria-label="Mois précédent">‹</button>
+        <span class="month-label">${label}</span>
+        <button type="button" data-month="1" aria-label="Mois suivant">›</button></div>
+      ${inner}
+      <div class="sheet-actions"><button type="button" class="cancel" data-close>Fermer</button>
+        ${navigator.share ? '<button type="button" class="cancel" data-share>Partager</button>' : ''}
+        <button type="button" class="submit" data-copy>Copier le texte</button></div>`;
+  }
+
+  async function openRecap(name, ym) {
+    recap = { name, ym, text: '' };
+    showPanel(recapShell('<div class="skeleton" style="height:110px;margin-top:14px"></div>'));
+    try {
+      const r = await call('recapMois', name, ym);
+      if (recap.name !== name || recap.ym !== ym) return;
+      $('panelBody').innerHTML = recapShell(recapBody(r));
+    } catch (err) {
+      $('panelBody').innerHTML = recapShell(`<div class="error" style="margin-top:14px">${esc(err.message)}</div>`);
+    }
+  }
+
+  function recapBody(r) {
+    const [y, m] = r.ym.split('-').map(Number);
+    const mois = cap(new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }));
+    const s = studentOf(r.name);
+    const recu = r.lessons.reduce((t, l) => t + l.amount, 0);
+    const heures = r.lessons.reduce((t, l) => t + durOf(l) / 60, 0);
+    const lignes = r.lessons.map(l => `• ${fmtWhen(l)}${durOf(l) !== DUREE_DEFAUT ? ` (${fmtDuree(durOf(l))})` : ''} — ${l.song || 'pas de morceau noté'} — ${euros(l.amount)}`);
+    const total = `${r.lessons.length} cours · ${euros(recu)} reçus${r.price ? ` (${euros(heures * r.price)} dus)` : ''}`;
+    recap.text = [`🥁 Cours de batterie — ${r.name}`, mois, '', ...(lignes.length ? lignes : ['Aucun cours ce mois-ci.']),
+      '', total, s ? `Solde au ${new Date().toLocaleDateString('fr-FR')} : ${s.status}` : ''].join('\n').trim();
+    const rows = r.lessons.length ? r.lessons.map(l => `<div class="h-row"><span class="h-when">${esc(fmtWhen(l))}</span>
+        <span class="h-song">${chip(l.song)}</span>${durTag(l)}<span class="h-amount">${euros(l.amount)}</span></div>`).join('')
+      : '<div class="hint" style="margin-top:12px">Aucun cours ce mois-ci.</div>';
+    return `<div style="margin-top:8px">${rows}</div><div class="r-total">${esc(total)}</div>
+      <textarea class="recap-text" readonly aria-label="Texte du récap">${esc(recap.text)}</textarea>`;
+  }
+
+  function copier(txt) {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (ok) { toast('Texte copié'); return; }
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => toast('Texte copié'), () => toast('Copie impossible : sélectionne le texte'));
+    else toast('Copie impossible : sélectionne le texte');
+  }
+
+  /* ---------- Panneau : statistiques ---------- */
+
+  let stats = null, statsYm = '';
+  const nb = x => String(Math.round(x * 10) / 10).replace('.', ',');
+  const moisLong = ym => { const [y, m] = ym.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }); };
+
+  async function openStats() {
+    if (!statsYm) statsYm = isoDate(new Date()).slice(0, 7);
+    if (!stats) $('statsView').innerHTML = '<div class="skeleton" style="height:220px"></div>';
+    try {
+      stats = await call('statistiques');
+      if (vue === 'stats') renderStats();
+    } catch (err) {
+      $('statsView').innerHTML = `<div class="error">${esc(err.message)}
+        <button type="button" class="btn-soft" id="statsRetry">Réessayer</button></div>`;
+    }
+  }
+
+  function renderStats() {
+    const parMois = {};
+    stats.months.forEach(m => { parMois[m.ym] = m; });
+    const vide = ym => ({ ym, lessons: 0, hours: 0, paid: 0, students: [] });
+    // 12 derniers mois, mois en cours compris.
+    const now = new Date();
+    const derniers = [];
+    for (let k = 11; k >= 0; k--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - k, 1);
+      const ym = `${d.getFullYear()}-${p2(d.getMonth() + 1)}`;
+      derniers.push(parMois[ym] || vide(ym));
+    }
+    const max = Math.max(1, ...derniers.map(m => m.paid));
+    const sel = parMois[statsYm] || vide(statsYm);
+    const annee = String(now.getFullYear());
+    const an = stats.months.filter(m => m.ym.startsWith(annee));
+    const tot = an.reduce((t, m) => ({ lessons: t.lessons + m.lessons, hours: t.hours + m.hours, paid: t.paid + m.paid }), { lessons: 0, hours: 0, paid: 0 });
+    const actifs = derniers.filter(m => m.lessons);
+    const moyenne = actifs.length ? actifs.reduce((t, m) => t + m.paid, 0) / actifs.length : 0;
+
+    const bars = derniers.map(m => {
+      const [y, mo] = m.ym.split('-').map(Number);
+      const lettre = new Date(y, mo - 1, 1).toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '');
+      return `<button type="button" class="bar ${m.ym === statsYm ? 'sel' : ''}" data-statsym="${m.ym}" aria-label="${moisLong(m.ym)} : ${euros(m.paid)}">
+        <i style="height:${Math.round(m.paid / max * 100)}%"></i><small>${esc(lettre.slice(0, 3))}</small></button>`;
+    }).join('');
+    const eleves = sel.students.length ? sel.students.map(e => `<div class="s-row"><span class="s-name">${esc(e.name)}</span>
+        <span class="s-num">${e.lessons} cours${Math.abs(e.hours - e.lessons) > 0.01 ? ' · ' + nb(e.hours) + ' h' : ''}</span>
+        <span class="s-amt">${euros(e.paid)}</span></div>`).join('')
+      : '<div class="hint">Aucun cours ce mois-ci.</div>';
+    const morceaux = stats.songs.length ? stats.songs.map(x => `<div class="p-row">${chip(x.name)}<span>${x.count} séance${x.count > 1 ? 's' : ''}</span></div>`).join('')
+      : '<div class="hint">Aucun morceau noté.</div>';
+
+    $('statsView').innerHTML = (`
+      <div class="label">Depuis janvier ${annee}</div>
+      <div class="kpis" style="margin-top:0">
+        <div class="kpi"><b>${euros(tot.paid)}</b><span>encaissés</span></div>
+        <div class="kpi"><b>${tot.lessons}</b><span>cours${Math.abs(tot.hours - tot.lessons) > 0.01 ? ' · ' + nb(tot.hours) + ' h' : ''}</span></div>
+        <div class="kpi"><b>${euros(moyenne)}</b><span>par mois (moy.)</span></div>
+      </div>
+      <div class="bars">${bars}</div>
+      <div class="field"><div class="label">${esc(cap(moisLong(statsYm)))} · ${euros(sel.paid)} · ${sel.lessons} cours</div>${eleves}</div>
+      <div class="field"><div class="label">Morceaux les plus travaillés</div>${morceaux}</div>`);
+  }
+
+  /* ---------- Panneau : réglages / ajout d'un élève ---------- */
+
+  let sf = null;
+
+  function openStudentForm(name) {
+    const s = name ? studentOf(name) : null;
+    const u = s ? parseUsual(s.usual) : null;
+    sf = {
+      mode: s ? 'edit' : 'add', name: s ? s.name : '', original: s ? s.usual : '',
+      day: u ? u.day : (s && s.usual.trim() ? 'keep' : null),
+      time: u ? `${p2(u.h)}:${p2(u.m)}` : '18:00',
+      price: s ? s.price : ((DATA.students.find(x => x.main) || DATA.students[0] || {}).price || 25)
+    };
+    renderStudentForm();
+    if (sf.mode === 'add') setTimeout(() => $('sfName') && $('sfName').focus(), 80);
+  }
+
+  function syncSf() {
+    if ($('sfName')) sf.name = $('sfName').value;
+    if ($('sfTime')) sf.time = $('sfTime').value || sf.time;
+    if ($('sfPrice')) sf.price = $('sfPrice').value;
+  }
+
+  function renderStudentForm() {
+    const jours = [1, 2, 3, 4, 5, 6, 0];
+    const choix = jours.map(d =>
+      `<button type="button" class="opt small ${sf.day === d ? 'sel' : ''}" aria-pressed="${sf.day === d}" data-sfday="${d}">${cap(JOURS[d].slice(0, 3))}</button>`).join('')
+      + (sf.original && !parseUsual(sf.original) ? `<button type="button" class="opt small ${sf.day === 'keep' ? 'sel' : ''}" data-sfday="keep">${esc(sf.original)}</button>` : '')
+      + `<button type="button" class="opt small ${sf.day === null ? 'sel' : ''}" aria-pressed="${sf.day === null}" data-sfday="none">Aucun</button>`;
+    showPanel(`<h2>${sf.mode === 'edit' ? 'Réglages · ' + esc(sf.name) : 'Nouvel élève'}</h2>
+      ${sf.mode === 'add' ? `<div class="field"><div class="label">Prénom</div>
+        <input type="text" id="sfName" value="${esc(sf.name)}" autocomplete="off"></div>` : ''}
+      <div class="field"><div class="label">Créneau habituel</div><div class="choices">${choix}</div>
+        <input type="time" id="sfTime" value="${sf.time}" step="900" style="margin-top:10px" ${typeof sf.day === 'number' ? '' : 'hidden'}></div>
+      <div class="field"><div class="label">Tarif par heure (€)</div>
+        <input type="number" id="sfPrice" inputmode="decimal" min="0" step="1" value="${esc(String(sf.price))}">
+        ${sf.mode === 'edit' ? '<div class="hint">Un nouveau tarif vaut pour les prochains cours : le solde actuel ne change pas.</div>' : ''}</div>
+      <div class="sheet-actions"><button type="button" class="cancel" data-close>Annuler</button>
+        <button type="button" class="submit" id="sfSave">${sf.mode === 'edit' ? 'Enregistrer' : 'Ajouter l\'élève'}</button></div>`);
+  }
+
+  async function saveStudent(btn) {
+    syncSf();
+    const name = sf.name.trim();
+    if (sf.mode === 'add' && !name) { $('sfName').focus(); return; }
+    const price = Number(String(sf.price).replace(',', '.'));
+    if (String(sf.price).trim() === '' || isNaN(price) || price < 0) { toast('Tarif invalide'); $('sfPrice').focus(); return; }
+    const usual = typeof sf.day === 'number' ? fmtUsual(sf.day, sf.time) : sf.day === 'keep' ? sf.original : '';
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Enregistrement…';
+    try {
+      const data = await call(sf.mode === 'edit' ? 'modifierEleve' : 'ajouterEleve', { name, usual, price });
+      render(data);
+      closeSheet();
+      vibrate();
+      toast(sf.mode === 'edit' ? 'Réglages enregistrés' : `Élève ajouté : ${name}`);
+    } catch (err) {
+      toast('Erreur : ' + err.message);
+      btn.disabled = false;
+      btn.textContent = label;
+    }
+  }
+
+  $('panel').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.close !== undefined) closeSheet();
+    else if (b.dataset.month) {
+      const [y, m] = recap.ym.split('-').map(Number);
+      const d = new Date(y, m - 1 + Number(b.dataset.month), 1);
+      openRecap(recap.name, `${d.getFullYear()}-${p2(d.getMonth() + 1)}`);
+    }
+    else if (b.dataset.copy !== undefined) { if (recap.text) copier(recap.text); }
+    else if (b.dataset.share !== undefined) {
+      if (recap.text) navigator.share({ text: recap.text }).catch(err => { if (err.name !== 'AbortError') copier(recap.text); });
+    }
+    else if (b.dataset.sfday !== undefined) {
+      syncSf();
+      const v = b.dataset.sfday;
+      sf.day = v === 'none' ? null : v === 'keep' ? 'keep' : Number(v);
+      renderStudentForm();
+    }
+    else if (b.id === 'sfSave') saveStudent(b);
+  });
+
+  $('statsView').addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.statsym) { statsYm = b.dataset.statsym; renderStats(); }
+    else if (b.id === 'statsRetry') openStats();
+  });
+
+  /* ---------- Paramètres ---------- */
+
+  let derniereMaj = null;
+  const seg = (k, choix) => `<div class="seg" role="group">${choix.map(([v, lib]) =>
+    `<button type="button" class="opt ${PREF[k] === v ? 'sel' : ''}" aria-pressed="${PREF[k] === v}" data-pref="${k}" data-val="${v}">${lib}</button>`).join('')}</div>`;
+  const sw = (k, lib, aide) => `<div class="set-row inline"><div><div class="set-label">${lib}</div>${aide ? `<div class="set-help">${aide}</div>` : ''}</div>
+    <button type="button" class="switch" role="switch" aria-checked="${!!PREF[k]}" aria-label="${lib}" data-toggle="${k}"></button></div>`;
+
+  function renderSettings() {
+    const ag = (DATA && DATA.agenda) || {};
+    const etatAgenda = !PREF.agenda ? 'Désactivé sur cet appareil'
+      : ag.error ? 'Agenda non lu : ' + esc(ag.error)
+      : DATA ? `${(ag.events || []).length} cours trouvés (5 semaines avant → 6 semaines après)` : '';
+    $('settingsView').innerHTML = `
+      <div class="set-title">Affichage</div>
+      <div class="set-group">
+        <div class="set-row"><div class="set-label">Thème</div>${seg('theme', [['auto', 'Automatique'], ['light', 'Clair'], ['dark', 'Sombre']])}</div>
+        <div class="set-row"><div class="set-label">Taille du texte</div>${seg('taille', [['normal', 'Normale'], ['grand', 'Grande']])}</div>
+        <div class="set-row"><div class="set-label">Page à l'ouverture</div>${seg('ouverture', [['derniere', 'Dernière utilisée'], ['accueil', 'Accueil'], ['eleves', 'Élèves']])}</div>
+      </div>
+      <div class="set-title">Cours</div>
+      <div class="set-group">
+        <div class="set-row"><div class="set-label">Durée proposée par défaut</div>
+          <div class="set-help">Pour un nouveau cours hors agenda. Les cours déjà notés ne changent pas.</div>
+          ${seg('duree', DUREES.map(d => [d, fmtDuree(d)]))}</div>
+        <div class="set-row"><div class="set-label">Bouton « Annuler » visible</div>${seg('annuler', [[5, '5 s'], [8, '8 s'], [15, '15 s']])}</div>
+        ${sw('vibration', 'Vibration', 'Petite vibration à l\'enregistrement (téléphone)')}
+      </div>
+      <div class="set-title">Agenda & données</div>
+      <div class="set-group">
+        ${sw('agenda', 'Utiliser l\'agenda PRESTATIONS', etatAgenda + '. Sert uniquement à afficher les cours prévus.')}
+        <button type="button" class="set-btn" id="setRefresh">🔄 Actualiser maintenant
+          <div class="set-help">Relit le tableur et l'agenda${derniereMaj ? ' · dernière mise à jour à ' + hhmm(derniereMaj) : ''}</div></button>
+        <button type="button" class="set-btn" id="setPasCours">✍️ Remplir les « Pas cours » maintenant
+          <div class="set-help">Semaines terminées sans cours (sinon fait automatiquement chaque lundi vers 3 h)</div></button>
+        <a class="set-btn" href="https://docs.google.com/spreadsheets/d/1UJQ63EFZF4X1IMLQSYmxCQJbW2Ajku0U4amvIgxscnQ/edit" target="_blank" rel="noopener">📄 Ouvrir le tableur
+          <div class="set-help">Google Sheet « Cours de batterie »</div></a>
+        <button type="button" class="set-btn" id="setReset">↩️ Réglages par défaut
+          <div class="set-help">Remet ces réglages comme au départ (sur cet appareil)</div></button>
+      </div>
+      <div class="set-foot">Réglages enregistrés sur cet appareil uniquement.</div>`;
+  }
+
+  $('settingsView').addEventListener('click', async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.pref) {
+      const k = b.dataset.pref, raw = b.dataset.val;
+      savePref(k, typeof PREF_DEFAUT[k] === 'number' ? Number(raw) : raw);
+      renderSettings();
+    } else if (b.dataset.toggle) {
+      const k = b.dataset.toggle;
+      savePref(k, !PREF[k]);
+      renderSettings();
+      if (k === 'agenda' && DATA) render(DATA, { save: false });
+      if (k === 'vibration') vibrate();
+    } else if (b.id === 'setRefresh') {
+      b.disabled = true;
+      try { localStorage.removeItem(CACHE_KEY); } catch (err) {}
+      if (await load()) toast('Données actualisées');
+      renderSettings();
+    } else if (b.id === 'setPasCours') {
+      if (!confirm('Écrire « Pas cours » dans les semaines terminées sans cours ?')) return;
+      b.disabled = true;
+      try { render(await call('remplirPasCoursMaintenant')); toast('« Pas cours » remplis'); }
+      catch (err) { toast('Erreur : ' + err.message); }
+      renderSettings();
+    } else if (b.id === 'setReset') {
+      Object.keys(PREF_DEFAUT).forEach(k => { PREF[k] = PREF_DEFAUT[k]; });
+      savePref('theme', 'auto');
+      renderSettings();
+      if (DATA) render(DATA, { save: false });
+      toast('Réglages par défaut remis');
+    }
+  });
+
+  /* ---------- Navigation entre les vues ---------- */
+
+  const VUES = { accueil: '🥁 Cours de batterie', eleves: 'Élèves', stats: 'Statistiques', reglages: 'Paramètres' };
+  let vue = 'accueil';
+  function setView(v, opts) {
+    if (!VUES[v]) v = 'accueil';
+    vue = v;
+    Object.keys(VUES).forEach(k => $('v-' + k).classList.toggle('on', k === v));
+    document.querySelectorAll('.nav-item[data-view]').forEach(b => {
+      const on = b.dataset.view === v;
+      b.classList.toggle('active', on);
+      if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+    });
+    $('viewTitle').textContent = VUES[v];
+    try { localStorage.setItem('cours-batterie:vue', v); } catch (e) {}
+    if (!opts || !opts.keepScroll) window.scrollTo(0, 0);
+    if (v === 'stats') { if (stats) renderStats(); openStats(); }
+    if (v === 'reglages') renderSettings();
+  }
+  document.querySelector('.nav').addEventListener('click', e => {
+    const b = e.target.closest('[data-view]');
+    if (b) setView(b.dataset.view);
+  });
+  $('navAdd').onclick = () => openSheet();
+  // « À encaisser » mène à la liste des élèves.
+  $('summary').onclick = () => setView('eleves');
+
+  /* ---------- Démarrage ---------- */
+
+  $('cancel').onclick = closeSheet;
+  $('sheetBg').onclick = closeSheet;
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+
+  function load() {
+    setSync(DATA ? 'mise à jour…' : '');
+    return call('getData').then(d => {
+      if (!busy) render(d);
+      derniereMaj = new Date();
+      setSync('');
+      if (vue === 'reglages') renderSettings();
+      return true;
+    }).catch(err => {
+      if (DATA) {
+        setSync('hors ligne · dernières données connues');
+        toast('Impossible de rafraîchir', { label: 'Réessayer', run: load });
+      } else {
+        setSync('');
+        $('dash').innerHTML = `<div class="error">Impossible de charger les données : ${esc(err.message)}
+          <button type="button" class="btn-soft" id="retry">Réessayer</button></div>`;
+      }
+      return false;
+    });
+  }
+
+  $('today').textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  let vueInitiale = 'accueil';
+  try { vueInitiale = localStorage.getItem('cours-batterie:vue') || 'accueil'; } catch (e) {}
+  if (PREF.ouverture !== 'derniere') vueInitiale = PREF.ouverture;
+  setView(vueInitiale, { keepScroll: true });
+  const cache = loadCache();
+  if (cache && cache.students) {
+    try { render(cache, { save: false }); } catch (e) { DATA = null; }
+  }
+  load();
+</script>
 </body>
 </html>
